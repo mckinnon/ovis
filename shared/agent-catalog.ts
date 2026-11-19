@@ -1008,8 +1008,7 @@ const CATALOG_ENTRIES: readonly AgentCatalogEntry[] = [
       version_args: ["--version"],
       install_dirs: { macos: ["~/.kimi-code/bin"], linux: ["~/.kimi-code/bin"], windows: ["%USERPROFILE%/.kimi-code/bin"] },
     },
-    // TODO(phase3): provider
-    sign_in: { provider: null, command: null, in_agent: "/login", api_keys: [], required: true },
+    sign_in: { provider: "kimi", command: ["kimi", "login"], in_agent: "/login", api_keys: [], required: true },
     after_install: ["On Windows, install Git for Windows before starting Kimi Code so it can use Git Bash."],
     min_version: null,
   },
@@ -1047,7 +1046,8 @@ const CATALOG_ENTRIES: readonly AgentCatalogEntry[] = [
       version_args: ["--version"],
       install_dirs: { macos: ["~/.local/bin"], linux: ["~/.local/bin"], windows: ["%LOCALAPPDATA%/qwen-code/bin"] },
     },
-    // TODO(phase3): provider
+    // No usage provider: Qwen Code exposes no plan-usage source (no billing or quota endpoint; its
+    // /usage is local token stats), so it stays out of Subscription usage.
     sign_in: { provider: null, command: null, in_agent: "/auth", api_keys: ["OPENAI_API_KEY", "BAILIAN_CODING_PLAN_API_KEY", "BAILIAN_TOKEN_PLAN_API_KEY"], required: true },
     after_install: ["Open a new terminal after installing Qwen Code so it picks up any PATH changes."],
     min_version: null,
