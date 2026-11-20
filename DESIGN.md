@@ -2776,6 +2776,34 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   that need the user first, is the herdr phone app's Inbox's and T3 Code's phone session
   list's.
 
+### Agent tracking mode (`.agent-tracking`)
+- Agent tracking is the app's other mode: every agent on every connected PC drawn as a detection
+  box in one slowly turning 3D scene, in the pane area's place (AgentTracking.tsx,
+  lib/agentTrackingScene.ts, lib/agentTrackingModel.ts, lib/appMode.ts). Its address is
+  `?app=tracking`, the same parameter as the inbox's, so the two are never on together and a
+  reload, a link, Back and Forward agree on it. It attaches, sizes and focuses no pane.
+- Ways in: the command palette (**Open agent tracking**), the sidebar footer beside the inbox's
+  row on a desktop, and More. Ways out: the close button in its top bar (**Back to Ovis**), the
+  palette, Back, and opening an agent: a click on a box (or on the row of the visually hidden list
+  under it) selects that pane in chat and leaves the mode.
+- What a box says comes from the sidebar's own words, so the two never disagree: the row title,
+  the state group (**Working**, **Idle**, **Done**, **Needs you**; a terminal with no agent says
+  **Terminal**), the time in that state from the same device stamps (lib/agentStateSince.ts),
+  and a blocked agent's reason. A working agent's text churns and small satellite boxes flicker
+  round it; an idle one is still and dim; a finish flashes once in `--status-done`; one that needs
+  you is drawn in `--status-blocked` and pulses. Arcs with an arrowhead run from the agent that
+  started a helper to the helper (`parent_pane_id`), never across PCs; a dotted arc joins the
+  top-level agents of one workspace, and each workspace is its own cluster.
+- Colour is read from the theme at runtime (`--term-bg`, `--text-strong`, `--text-dim`,
+  `--status-*`) and again on a theme change, so every theme draws it; the glow pass is drawn only
+  on a dark ground. Text uses `--font-ui` and `--font-mono`.
+- Drag orbits, the wheel zooms, a double-click resets the view. The top bar's count line is a
+  `role="status"` line, and the scene is repeated as a visually hidden list of buttons, one per
+  agent, with its name, state, workspace and PC.
+- Reference: none of the reference apps (the Codex and Claude apps, Paseo, T3 Code, Conductor)
+  draws agents spatially; they list them, which the inbox already does. The look is a port of
+  the Forge "3D Tracking" motion-tracking overlay, redrawn in the theme's tokens.
+
 ### Plan meters (`.usage*`)
 - Right of the Settings gear, one button holding as many chips as the row has room for (judged
   by the widest chip drawn, so the count settles), the rest folded into `+N`, one per account in
@@ -6098,6 +6126,9 @@ The values are the ones in `src/styles.css`.
 - The voice recording waveform is the one surface allowed to draw every frame: only while
   recording, driven by the live microphone level, transform-only (`scaleY` on 7 bars). The pill is
   a state change, not a dialog, so the snap rule above does not apply to it.
+- Agent tracking's canvas is the other surface allowed to draw every frame, at most 30 a second and
+  only while its mode is on and the page is visible. Under reduced motion it draws a still scene:
+  no turning, no churn and no pulse; boxes still fade in and out once.
 - `prefers-reduced-motion: reduce` removes pulses, drawer/control transitions, sheet rise and drop,
   smooth chat scrolling and settings toggle motion; a drag still follows the finger. State remains legible without animation.
   One exception: the sidebar's RUN dot keeps its stepped breath, opacity only and nothing moving,

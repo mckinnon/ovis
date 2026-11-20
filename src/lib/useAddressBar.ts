@@ -2,6 +2,7 @@ import { type Dispatch, type RefObject, type SetStateAction, useCallback, useEff
 import type { HerdrPane, HerdrWorkspace } from "../../shared/protocol.ts";
 import { LOCAL_MACHINE, type Machine } from "../../shared/machines.ts";
 import type { PaneView } from "./actions.ts";
+import { modeSlots, takeModeExit, type AppModeSlot } from "./appMode.ts";
 import { fileFromLink, isNavigation, linkSearch, NAV_KEY, readLink, resolveLink, slugOf, type AppLink, type LinkNote } from "./deepLink.ts";
 import { withoutFile } from "./historyKeys.ts";
 import { INBOX_FROM_KEY, type useInbox } from "./useInbox.ts";
@@ -26,7 +27,8 @@ export function popUnread(dispatching: Event | undefined, read: Event | null): b
 
 export function useAddressBar({ inbox, mode, newSessionOpen, newSessionMachineId, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, leaveFile, restoreFile, fileFromPop, forgetLeftFiles, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, newSessionPending, setHeaderNote, selectionRef }: {
   inbox: Pick<ReturnType<typeof useInbox>, "shown" | "enabled" | "show" | "leave">;
-  mode?: { on: boolean; lands(): boolean };
+  /** the full-area modes the shell offers, one or several: while one is on, a pane move replaces its address */
+  mode?: AppModeSlot | readonly AppModeSlot[];
   newSessionOpen: boolean;
   newSessionMachineId: string;
   selectedPane: HerdrPane | null;
@@ -74,7 +76,7 @@ export function useAddressBar({ inbox, mode, newSessionOpen, newSessionMachineId
   const newSessionOpenRef = useRef(newSessionOpen); newSessionOpenRef.current = newSessionOpen;
   const inboxRef = useRef(inbox); inboxRef.current = inbox;
   const modeRef = useRef(mode); modeRef.current = mode;
-  const modeOn = mode?.on === true;
+  const modeOn = modeSlots(mode).some((slot) => slot.on);
   const { shown: inboxShown, enabled: inboxEnabled } = inbox;
   const linkPaneId = inboxShown ? null : selectedPaneId;
   const linkWorkspaceId = inboxShown ? null : selectedPane?.workspace_id ?? (selectedPaneId === null ? null : undefined);
@@ -137,6 +139,9 @@ export function useAddressBar({ inbox, mode, newSessionOpen, newSessionMachineId
     writtenLink.current = link;
     const leftInbox = listWritten.current && !inboxShown;
     listWritten.current = inboxShown;
+    // a mode left in order to open this pane (lib/appMode.ts leaveToOpen): its entry is this
+    // write's to take, so the two are one stop and one Back returns to the mode
+    const leftModeToOpen = takeModeExit();
     const search = linkSearch(link, pageSearch());
     const popped = poppedTo.current;
     poppedTo.current = false;
@@ -149,6 +154,7 @@ export function useAddressBar({ inbox, mode, newSessionOpen, newSessionMachineId
     if (!popped && !settingsOpen && !newSessionOpen && moved) {
       const state = leftInbox ? { [NAV_KEY]: true, [INBOX_FROM_KEY]: true } : { [NAV_KEY]: true };
       if (modeOn && !leftInbox) window.history.replaceState(fileLeft ? withoutFile(window.history.state) : window.history.state, "", url);
+      else if (leftModeToOpen && !leftInbox) window.history.replaceState(state, "", url);
       else if (fileLeft && !kept && !leftInbox) window.history.replaceState(state, "", url);
       else window.history.pushState(state, "", url);
       if (selectedPaneId !== null) restoreFileRef.current(selectedMachineId, selectedPaneId);
@@ -170,7 +176,10 @@ export function useAddressBar({ inbox, mode, newSessionOpen, newSessionMachineId
   }, [linkLanded, locked, selectedMachine?.state, snapshot, selectedPane, selectedMachineId, viewing, openFile]);
 
   useEffect(() => {
-    const listHere = (): boolean => modeRef.current?.lands() ?? inboxRef.current.enabled;
+    const listHere = (): boolean => {
+      const slots = modeSlots(modeRef.current);
+      return slots.length > 0 ? slots.some((slot) => slot.lands()) : inboxRef.current.enabled;
+    };
     const onPop = (event: PopStateEvent): void => {
       if (settingsEntry(event.state) !== null) return;
       if (sheetSteppedOff()) return;

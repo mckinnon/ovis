@@ -1,0 +1,79 @@
+/* Agent tracking mode: one full-area canvas in the pane area's place, a quiet top bar over it. */
+.agent-tracking {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--term-bg);
+  color: var(--text);
+}
+
+.agent-tracking-top {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  pointer-events: none;
+}
+
+.agent-tracking-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.agent-tracking-counts {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.agent-tracking-close {
+  margin-left: auto;
+  pointer-events: auto;
+}
+
+.agent-tracking-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  /* the scene reads its ground from here (readLook), so it must be painted here, not inherited */
+  background: var(--term-bg);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.agent-tracking-stage.is-hot {
+  cursor: pointer;
+}
+
+.agent-tracking-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.agent-tracking-canvas,
+.agent-tracking-bloom {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-tracking-bloom {
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.agent-tracking-bloom[hidden] {
+  display: none;
+}

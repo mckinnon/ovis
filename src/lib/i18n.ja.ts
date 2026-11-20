@@ -524,6 +524,7 @@ const BASE: Record<string, string> = {
   "Agent inbox": "エージェント受信トレイ",
   "Inbox mode": "受信トレイモード",
   "Open agent inbox": "エージェント受信トレイを開く",
+  "Open agent tracking": "エージェント追跡を開く",
   "Back to Ovis": "Ovis に戻る",
   "Remove PC": "PC を削除",
   "Remove PC {name}?": "PC {name} を削除しますか？",

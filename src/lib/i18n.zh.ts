@@ -529,6 +529,7 @@ const BASE: Record<string, string> = {
   "Agent inbox": "Agent 收件箱",
   "Inbox mode": "收件箱模式",
   "Open agent inbox": "打开 Agent 收件箱",
+  "Open agent tracking": "打开 Agent 追踪",
   "Back to Ovis": "返回 Ovis",
   "Remove PC": "移除 PC",
   "Remove PC {name}?": "移除 PC {name}？",

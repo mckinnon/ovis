@@ -522,6 +522,7 @@ const BASE: Record<string, string> = {
   "Agent inbox": "에이전트 인박스",
   "Inbox mode": "인박스 모드",
   "Open agent inbox": "에이전트 인박스 열기",
+  "Open agent tracking": "에이전트 추적 열기",
   "Back to Ovis": "Ovis로 돌아가기",
   "Remove PC": "PC 제거",
   "Remove PC {name}?": "{name} PC를 제거할까요?",

@@ -38,6 +38,12 @@ export interface AppActions {
   connectPc: (machine: Machine) => void;
   toggleSidebar: () => void;
   inboxMode: { on: boolean; go: () => void } | null;
+  /**
+   * Agent tracking, the other mode of the one `app` parameter (lib/appMode.ts): `go` enters it where
+   * it is off and leaves it where it is on; null where the setup guide has the classic shell to
+   * itself, as `inboxMode` is.
+   */
+  trackingMode: { on: boolean; go: () => void } | null;
   openSidebarFilter: () => void;
   toggleTheme: () => void;
   /** Sign out of token/device authentication; null for automatic local/Tailscale access. */

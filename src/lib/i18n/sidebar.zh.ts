@@ -84,4 +84,6 @@ export const SIDEBAR_ZH: Record<string, string> = {
   "Remove from {group}": "从 {group} 移出",
   "{count} working": "{count} 个工作中",
   "On this device, an agent's helpers fold into one line under it in the Agents list, with their count. A helper that needs you and the one you selected stay in sight.": "在此设备的 Agent 列表中，把 Agent 的助手折叠成它下方的一行，并显示数量。需要你回应的助手和当前选中的助手仍会显示。",
+  "{total} running · {working} working · {blocked} need you": "运行中 {total} · 工作中 {working} · 需回应 {blocked}",
+  "Agent tracking": "Agent 追踪",
 };

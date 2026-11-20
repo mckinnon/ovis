@@ -1,22 +1,19 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+/**
+ * The agent inbox's end of the app's mode address (lib/appMode.ts): the inbox is one of the modes
+ * the one `app` parameter names, and this file keeps the inbox's own words for it, plus where a
+ * device that asks to start in the inbox starts.
+ */
 import { inboxStartsOpen } from "./agentInbox.ts";
-import { NAV_KEY, type AppLink } from "./deepLink.ts";
-import { SEEN_KEY } from "./historyKeys.ts";
-import { pageAddress, pageSearch } from "./pageQuery.ts";
-
-const PARAM = "app";
-const INBOX = "inbox";
+import { modeAddress, useAppMode, withModeAddress, type AppMode, type AppModeState } from "./appMode.ts";
+import type { AppLink } from "./deepLink.ts";
+import { pageSearch } from "./pageQuery.ts";
 
 export function inboxAddress(search: string): boolean {
-  return new URLSearchParams(search).get(PARAM) === INBOX;
+  return modeAddress(search) === "inbox";
 }
 
 export function withInboxAddress(search: string, inbox: boolean): string {
-  const query = new URLSearchParams(search);
-  if (inbox) query.set(PARAM, INBOX);
-  else if (query.get(PARAM) === INBOX) query.delete(PARAM);
-  const text = query.toString();
-  return text ? `?${text}` : "";
+  return withModeAddress(search, inbox ? "inbox" : "classic");
 }
 
 /**
@@ -37,56 +34,21 @@ export function paneAddressStartsInInbox(link: AppLink | null): boolean {
   return Boolean(link?.pane);
 }
 
-export function startsInInbox(setting: boolean, phone: boolean, link: AppLink | null, fresh: boolean): boolean {
-  return setting && phone && fresh && (inboxStartsOpen(true, link) || paneAddressStartsInInbox(link));
+/**
+ * Whether a device that asks to start in the inbox starts there. `addressed` is the mode the page's
+ * own address names: an address that says where the app is — a fresh `?app=tracking` link, say —
+ * wins over the setting, which says where a phone starts, not where it stays.
+ */
+export function startsInInbox(setting: boolean, phone: boolean, link: AppLink | null, fresh: boolean, addressed: AppMode = "classic"): boolean {
+  return addressed === "classic" && setting && phone && fresh && (inboxStartsOpen(true, link) || paneAddressStartsInInbox(link));
 }
 
 export function pageStartsInInbox(setting: boolean, phone: boolean, link: AppLink | null): boolean {
-  return startsInInbox(setting, phone, link, freshNavigation(pageNavigation(), window.history.state));
+  return startsInInbox(setting, phone, link, freshNavigation(pageNavigation(), window.history.state), modeAddress(pageSearch()));
 }
 
-export interface InboxMode {
-  on: boolean;
-  at(): boolean;
-  enter(): void;
-  leave(): void;
-  drawerBlocked: RefObject<boolean>;
-}
+export type InboxMode = AppModeState;
 
-export function useInboxMode({ startsIn }: {
-  startsIn?: () => boolean;
-} = {}): InboxMode {
-  const [starts] = useState(() => startsIn?.() === true);
-  const [on, setOn] = useState(() => starts || inboxAddress(pageSearch()));
-  const drawerBlocked = useRef(on);
-  useEffect(() => {
-    const address = starts && !inboxAddress(pageSearch()) ? pageAddress(window.location.pathname, withInboxAddress(pageSearch(), true), window.location.hash) : undefined;
-    // An entry the app has stood on carries a state (freshNavigation): the one the page loaded on from here, and one
-    // left without a state since (the auth link's own replace, a fragment typed into the address) by the time the
-    // page is hidden, which comes before the browser can discard the tab or close with it.
-    const seen = (): void => { if (window.history.state === null) window.history.replaceState({ [SEEN_KEY]: true }, ""); };
-    const hidden = (): void => { if (document.visibilityState === "hidden") seen(); };
-    if (address !== undefined) window.history.replaceState(window.history.state ?? { [SEEN_KEY]: true }, "", address);
-    else seen();
-    window.addEventListener("pagehide", seen);
-    if (typeof document !== "undefined") document.addEventListener("visibilitychange", hidden);
-    return () => {
-      window.removeEventListener("pagehide", seen);
-      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", hidden);
-    };
-  }, []);
-  useEffect(() => {
-    const onPop = (): void => setOn(inboxAddress(pageSearch()));
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-  const go = useCallback((next: boolean): void => {
-    const search = withInboxAddress(pageSearch(), next);
-    if (search !== pageSearch()) window.history.pushState({ [NAV_KEY]: true }, "", pageAddress(window.location.pathname, search, window.location.hash));
-    setOn(next);
-  }, []);
-  const enter = useCallback((): void => go(true), [go]);
-  const leave = useCallback((): void => go(false), [go]);
-  const at = useCallback((): boolean => inboxAddress(pageSearch()), []);
-  return { on, at, enter, leave, drawerBlocked };
+export function useInboxMode({ startsIn }: { startsIn?: () => boolean } = {}): InboxMode {
+  return useAppMode("inbox", { startsIn });
 }
