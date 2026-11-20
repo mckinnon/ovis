@@ -4,6 +4,7 @@ import { useT } from "../lib/i18n.ts";
 import { stateAge } from "./AgentSidebar.tsx";
 import { trackedAgents, type TrackedState } from "../lib/agentTrackingModel.ts";
 import type { SidebarActivity } from "../lib/sidebarActivity.tsx";
+import { useAgentModels } from "../lib/useAgentModels.ts";
 import { useAgentStateStamps } from "../lib/useAgentStateSince.ts";
 import type { Machine } from "../../shared/machines.ts";
 import { AUTO_ROTATE, FPS, VIEW, createTrackingScene, type TrackingFrameOptions, type TrackingPalette } from "../lib/agentTrackingScene.ts";
@@ -60,7 +61,9 @@ export function AgentTracking({ machines, activity, onOpen, onClose }: {
 }) {
   const t = useT();
   const stamps = useAgentStateStamps();
-  const agents = useMemo(() => trackedAgents(machines, { status: activity.status, stamps }), [machines, activity, stamps]);
+  const listed = useMemo(() => trackedAgents(machines, { status: activity.status, stamps }), [machines, activity, stamps]);
+  const models = useAgentModels(listed);
+  const agents = useMemo(() => models.size === 0 ? listed : listed.map((agent) => ({ ...agent, model: models.get(agent.key) ?? null })), [listed, models]);
   const stageRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLCanvasElement>(null);
   const bloomRefs = [useRef<HTMLCanvasElement>(null), useRef<HTMLCanvasElement>(null)];

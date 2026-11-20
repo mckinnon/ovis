@@ -19,7 +19,7 @@ function agent(key: string, overrides: Partial<TrackedAgent> = {}): TrackedAgent
   return {
     key, machineId: "local", paneId: key, label: key, app: "codex", state: "idle",
     message: null, workspace: "Work", cluster: "local/work", machine: null,
-    parent: null, since: null, finish: null, ...overrides,
+    parent: null, since: null, finish: null, model: null, ...overrides,
   };
 }
 
@@ -86,7 +86,7 @@ test("new agents have finite geometry between frames and in still mode", () => {
     scene.setAgents([agent("working", { state: "working" })]);
     expect(at(0, 2).boxes.length).toBeGreaterThan(0);
     const settled = at(1, 30);
-    expect(settled.texts).toContain("working");
+    expect(settled.texts).toContain("codex: working");
     if (still) {
       const later = at(3, 90);
       expect(later.boxes).toEqual(settled.boxes);
@@ -178,8 +178,14 @@ test("callouts show translated state, duration and message", () => {
   });
   scene.setAgents([tracked]);
   expect(at(start + 1).texts).toEqual(expect.arrayContaining([
-    "agent · Remote", "Blocked", "Work · Blocked 1500ms",
+    "codex: agent · Remote", "Blocked", "Work · Blocked 1500ms",
   ]));
+  scene.setAgents([{ ...tracked, model: "GPT-6.1-Sol" }]);
+  expect(at(start + 1.5).texts).toContain("codex/GPT-6.1-Sol: agent · Remote");
+  scene.setAgents([{ ...tracked, model: "Kimi-K3", app: "kimi", label: "" }]);
+  expect(at(start + 1.55).texts).toContain("kimi/Kimi-K3 · Remote");
+  scene.setAgents([{ ...tracked, app: null }]);
+  expect(at(start + 1.6).texts).toContain("agent · Remote");
   scene.setAgents([{ ...tracked, message: "Waiting for input" }]);
   expect(at(start + 2).texts).toContain("Waiting for input");
 });

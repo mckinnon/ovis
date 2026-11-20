@@ -2798,14 +2798,35 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   top bar where it is a screen of its own (**Back to Ovis**), the palette, Back, and opening an
   agent: a click on a box (or on the row of the visually hidden list under it) selects that pane
   in chat and leaves the mode.
-- What a box says comes from the sidebar's own words, so the two never disagree: the row title,
+- A box's first line is `agent/model: task`, then its state word (`codex/GPT-6.1-Sol: Fix the
+  login · Working`): the agent's id, the model its conversation last recorded as the chat's model
+  pill names it (lib/useAgentModels.ts: the newest prompt only, one pane at a time, every 30 s
+  while the page is visible; local reads, no model is asked anything). Kimi and Qwen record no
+  model Ovis reads, so for them the last lines of the screen are read for the footer that names
+  it (`kimi-k3 thinking: high`, `· qwen3.8-max xhigh ·`); an id the pill has no name for is
+  capitalised (`Kimi-K3`). The task is the pane's title less what is not a task
+  (lib/agentTrackingNames.ts): hc's `<hc from=…>` wrapper, a shell's `user@host: ~/x` title,
+  folders, the workspace's name and the agent's own name. The workspace belongs to the second
+  line only. With nothing left it reads `kimi/Kimi-K3` alone. A plain terminal shows its title
+  alone, or its pane id when that was a shell's or a folder. The second line is the workspace,
+  state and time in it, or a blocked agent's reason.
+- Apart from the task, which is cleaned as above, what a box says comes from the sidebar's own
+  words, so the two never disagree: the row title,
   the state group (**Working**, **Idle**, **Done**, **Needs you**; a terminal with no agent says
   **Terminal**), the time in that state from the same device stamps (lib/agentStateSince.ts),
   and a blocked agent's reason. A working agent's text churns and small satellite boxes flicker
   round it; an idle one is still and dim; a finish flashes once in `--status-done`; one that needs
   you is drawn in `--status-blocked` and pulses. Arcs with an arrowhead run from the agent that
   started a helper to the helper (`parent_pane_id`), never across PCs; a dotted arc joins the
-  top-level agents of one workspace, and each workspace is its own cluster.
+  top-level agents of one workspace.
+- Layout (lib/agentTrackingOrbit.ts): the agent that started the most helpers (children and
+  theirs) sits at the centre and barely drifts; on a tie an agent beats a plain terminal, then the
+  lowest hc number (t3 before t12). The rest orbit it on tilted rings: its helpers inside, their
+  helpers next, agents outside its tree outermost, a full ring spilling outward. Each ring tilts
+  toward the camera as it turns, so a box nearest or farthest from the viewer passes above or
+  below the centre, never through it. A box grows with the helpers below it, up to twice the size
+  for the agent with the most. The framing zooms to keep every box in view and keeps the centre
+  agent in the middle. Everything moves at half the original overlay's pace (`MOTION`).
 - Colour is read from the theme at runtime (`--term-bg`, `--text-strong`, `--text-dim`,
   `--status-*`) and again on a theme change, so every theme draws it; the glow pass is drawn only
   on a dark ground. Text uses `--font-ui` and `--font-mono`.

@@ -54,17 +54,21 @@ describe("trackedAgents", () => {
     expect(rows.map((row) => [row.paneId, row.state])).toEqual([["d", "idle"], ["w", "working"]]);
   });
 
-  it("names a row as the sidebar does: its label, then a title, and the workspace when the title only names the agent", () => {
+  it("names a row's task: its label, then a title, never the workspace or the agent's own name", () => {
     const labelled = pane("l", { agent: "codex", label: "Docs", title: "Codex" });
     const titled = pane("t", { agent: "codex", title: "Fix the flaky test" });
     const named = pane("n", { agent: "codex", title: "Codex" });
     const plain = pane("p", {});
-    const rows = trackedAgents([machine("local", "connected", snapshot([labelled, titled, named, plain]))], ctx());
+    const shell = pane("s", { title: "me@host: ~/project" });
+    const suffixed = pane("x", { agent: "codex", title: "Fix the flaky test | Project" });
+    const rows = trackedAgents([machine("local", "connected", snapshot([labelled, titled, named, plain, shell, suffixed]))], ctx());
     const label = (id: string) => rows.find((row) => row.paneId === id)?.label;
     expect(label("l")).toBe("Docs");
     expect(label("t")).toBe("Fix the flaky test");
-    expect(label("n")).toBe("Project");
+    expect(label("n")).toBe(""); // the first line shows codex/model alone
     expect(label("p")).toBe("p");
+    expect(label("s")).toBe("s"); // a plain shell's user@host title: its pane id
+    expect(label("x")).toBe("Fix the flaky test");
   });
 
   it("takes the state's start from the stamps, matching pane, terminal and stamped state", () => {

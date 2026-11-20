@@ -1,3 +1,4 @@
+import { helperCounts, hubOf, orbitPlaces } from "./agentTrackingOrbit.ts";
 import type { TrackedAgent, TrackedState } from "./agentTrackingModel.ts";
 
 export interface Camera {
@@ -49,6 +50,8 @@ interface AgentView {
   frozen: number;
   flashed: number | null;
   slot: Slot | null;
+  /** its angle on its orbit's ring, eased toward its even share when agents come and go */
+  phase: number | null;
 }
 interface TrackGeometry {
   a: TrackedAgent;
@@ -77,7 +80,9 @@ function stateInk(state: TrackedState, palette: TrackingPalette): string {
 
 export const FPS = 30;
 const DEPTH = 2;
-export const AUTO_ROTATE = -0.11;
+/** the scene's pace: positions, drift and the turn run at this share of the original's speed */
+const MOTION = 0.5;
+export const AUTO_ROTATE = -0.11 * MOTION;
 const GRID_OPACITY = 0.15;
 const BEND = 0.15;
 const LINK_WEIGHT = 1;
@@ -241,14 +246,18 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
     const area = { x0: 16, y0: top + 12, x1: w - 16, y1: h - 48 };
     const aw = Math.max(1, area.x1 - area.x0);
     const ah = Math.max(1, area.y1 - area.y0);
-    const k = Math.min(aw / Math.max(1, extent.x1 - extent.x0), ah / Math.max(1, extent.y1 - extent.y0));
+    // The hub (the world's origin) stays in the middle of the area: the framing zooms so the
+    // farthest box on either side fits, and pans only to keep that middle under the top bar.
+    const ox = w / 2 + fit.px;
+    const oy = h / 2 + fit.py;
+    const hx = Math.max(ox - extent.x0, extent.x1 - ox);
+    const hy = Math.max(oy - extent.y0, extent.y1 - oy);
+    const k = Math.min(aw / 2 / Math.max(1, hx), ah / 2 / Math.max(1, hy));
     // zoom out until it fits; drift back in once there is a fair margin
     const zoom = k < 1 ? fit.zoom / k : k > 1.3 ? fit.zoom / (k / 1.3) : fit.zoom;
-    const along = (a0: number, a1: number, e0: number, e1: number) =>
-      e1 - e0 > a1 - a0 ? (a0 + a1) / 2 - (e0 + e1) / 2 : e0 < a0 ? a0 - e0 : e1 > a1 ? a1 - e1 : 0;
     fit.zoom += (Math.max(1, Math.min(3, zoom)) - fit.zoom) * 0.08;
-    fit.px += along(area.x0, area.x1, extent.x0, extent.x1) * 0.08;
-    fit.py += along(area.y0, area.y1, extent.y0, extent.y1) * 0.08;
+    fit.px += ((area.x0 + area.x1) / 2 - w / 2 - fit.px) * 0.08;
+    fit.py += ((area.y0 + area.y1) / 2 - h / 2 - fit.py) * 0.08;
     fit.px = Math.max(-w / 2, Math.min(w / 2, fit.px));
     fit.py = Math.max(-h / 2, Math.min(h / 2, fit.py));
   }
@@ -266,7 +275,7 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
       if (!view) {
         view = {
           id: seedOf(agent.key), born: time, changed: time, frozen: time,
-          gone: null, flashed: null, slot: null,
+          gone: null, flashed: null, slot: null, phase: null,
         };
         views.set(agent.key, view);
       }
@@ -328,7 +337,7 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
   // `t` is the scene clock (same base as `now`); `tb` drives the body and the churn, and stands
   // still under reduced motion while fades and reveals still run on `t`.
   const draw: TrackingScene["frame"] = (ctx, w, h, dpr, t, frameNo, cam, o) => {
-    const tb = o.still ? 2.4 : t;
+    const tb = o.still ? 2.4 : t * MOTION;
     const frame = o.still ? 0 : frameNo;
     const { palette } = o;
     const font = `500 11px ${o.sans}`;
@@ -411,6 +420,11 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
 
     // Tracks: one per terminal (fading out when removed), plus satellites of working agents.
     const tracks: Track[] = [];
+    const listed = [...agents.values()];
+    const helpers = helperCounts(listed);
+    const hub = hubOf(listed, helpers);
+    const places = orbitPlaces(listed, hub);
+    const mostHelpers = Math.max(0, ...helpers.values());
     for (const [key, v] of views) {
       if (!v.slot) continue;
       const a = agents.get(key);
@@ -422,14 +436,33 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
         agents.delete(key);
         continue;
       }
-      const { s, j } = v.slot;
-      const p = live[s]![j]!;
-      const z = strandZ(s, j, tb, S) * DEPTH;
+      // The hub sits at the centre and barely drifts; the rest orbit it, inner rings faster.
+      const place = places.get(key);
+      let p: Point;
+      let z: number;
+      if (!place) {
+        p = { x: w / 2 + S * 0.012 * noise(tb * 0.3, 81 + v.id), y: h / 2 + S * 0.012 * noise(tb * 0.27, 83 + v.id) };
+        z = S * 0.015 * noise(tb * 0.25, 85 + v.id);
+      } else {
+        const share = (2 * Math.PI * place.index) / place.count + place.ring * 0.7;
+        if (v.phase === null) v.phase = share;
+        const turn = Math.atan2(Math.sin(share - v.phase), Math.cos(share - v.phase));
+        v.phase += turn * (o.still ? 1 : 0.04);
+        const R = S * (0.42 + 0.2 * place.ring) * (1 + 0.04 * noise(tb * 0.2, 87 + v.id));
+        const angle = v.phase + (0.32 / (1 + 0.6 * place.ring)) * tb;
+        z = R * Math.sin(angle) * (DEPTH / 2);
+        // tilted toward the camera however it has turned (alternate rings the other way): nearest
+        // and farthest from the viewer it passes above or below the hub, never through it
+        const toward = rotate({ x: R * Math.cos(angle), y: 0, z }).z;
+        p = { x: w / 2 + R * Math.cos(angle), y: h / 2 + 0.9 * toward * (place.ring % 2 === 0 ? 1 : -1) };
+      }
       const isWorking = a.state === "working";
       const tall = hash(v.id, 7) < 0.3;
       const jitter = isWorking ? 1 : 0;
-      const bw = (tall ? 44 : 64) + 40 * hash(v.id, 8) ** 2 + 3 * jitter * hash(v.id, frame, 9);
-      const bh = (tall ? 96 : 30) + (tall ? 60 : 30) * hash(v.id, 10) ** 2 + 3 * jitter * hash(v.id, frame, 11);
+      // bigger for more helpers started, up to twice the size for the agent with the most
+      const scale = mostHelpers > 0 ? 1 + Math.sqrt((helpers.get(key) ?? 0) / mostHelpers) : 1;
+      const bw = ((tall ? 44 : 64) + 40 * hash(v.id, 8) ** 2) * scale + 3 * jitter * hash(v.id, frame, 9);
+      const bh = ((tall ? 96 : 30) + (tall ? 60 : 30) * hash(v.id, 10) ** 2) * scale + 3 * jitter * hash(v.id, frame, 11);
       tracks.push({ kind: "agent", a, v, p, z, bw, bh, presence: fadeIn * fadeOut });
 
       if (isWorking) {
@@ -439,16 +472,15 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
           const k = Math.floor((tb + hash(v.id, i, 2) * life) / life);
           if (hash(v.id, i, k, 3) < 0.35) continue;
           if (hash(v.id, i, frame, 4) < 0.06) continue;
-          const dj = 1 + Math.floor(hash(v.id, i, k, 5) * 3);
-          const jj = Math.max(0, Math.min(JOINTS - 1, j + (hash(v.id, i, k, 6) < 0.5 ? -dj : dj)));
-          const ss = s;
+          // close by the agent, wherever its orbit has it now
+          const reach = S * 0.06;
           tracks.push({
             kind: "sat",
             a,
             v,
             id: v.id * 7 + i,
-            p: live[ss]![jj]!,
-            z: strandZ(ss, jj, tb, S) * DEPTH,
+            p: { x: p.x + (hash(v.id, i, k, 5) - 0.5) * 2 * reach, y: p.y + (hash(v.id, i, k, 6) - 0.5) * 2 * reach },
+            z: z + (hash(v.id, i, k, 7) - 0.5) * 2 * reach,
             bw: 12 + 30 * hash(v.id, i, k, 9) ** 2,
             bh: 12 + 36 * hash(v.id, i, k, 10) ** 2,
             presence: fadeIn * fadeOut,
@@ -584,7 +616,7 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
       const stroke = alarm ? palette.blocked : palette.ink;
       const strokeA = isSat ? 0.6 : state === "working" || alarm || lit ? 1 : state === "none" ? 0.4 : 0.6;
       // Blocked/error boxes pulse.
-      const pulse = alarm && !o.still ? 0.65 + 0.35 * Math.sin(tb * 6) : 1;
+      const pulse = alarm && !o.still ? 0.65 + 0.35 * Math.sin(t * 6) : 1;
       ctx.globalAlpha = alpha * strokeA * pulse;
       ctx.strokeStyle = stroke;
       ctx.lineWidth = lit ? 1.5 : 1;
@@ -625,7 +657,11 @@ export function createTrackingScene({ now }: { now: () => number }): TrackingSce
       // Callout: two lines above the box, stepping up past labels already placed.
       const reveal = Math.max(0, Math.min(1, (t - v.born) / 0.6));
       const stateReveal = Math.max(0, Math.min(1, (t - v.changed) / 0.35));
-      const head = scrambled(a.machine ? `${a.label} · ${a.machine}` : a.label, reveal, id);
+      // agent/model: task, then the state word (codex/gpt-6.1-sol: Fix the login · Working)
+      // an agent whose title named no task shows only agent/model (kimi/Kimi-K3  Idle)
+      const who = a.app === null ? "" : a.model ? `${a.app}/${a.model}` : a.app;
+      const first = who && a.label ? `${who}: ${a.label}` : who || a.label;
+      const head = scrambled(`${first}${a.machine ? ` · ${a.machine}` : ""}`, reveal, id);
       const word = o.words[state];
       const stateText = scrambled(word, stateReveal, id + 1);
       const duration = a.since === null || a.message !== null ? "" : o.age(Math.max(0, epochMs - a.since));

@@ -1,11 +1,11 @@
 import type { Machine } from "../../shared/machines.ts";
 import type { AgentInfo, AgentStatus, HerdrPane } from "../../shared/protocol.ts";
-import { hasAgentMark } from "../components/AgentMark.tsx";
-import { compactWorktreeName, displayPaneTitle } from "../components/Sidebar.tsx";
+import { displayPaneTitle } from "../components/Sidebar.tsx";
 import { agentGroup } from "./agentRoster.ts";
 import { stampState, stateSince, type StateStamps } from "./agentStateSince.ts";
+import { trackingTask } from "./agentTrackingNames.ts";
 import { agentName } from "./runtimeMove.ts";
-import { paneMark, sidebarAgents, titleOnlyNamesAgent, type SidebarAgent } from "./sidebarAgents.ts";
+import { sidebarAgents } from "./sidebarAgents.ts";
 
 export type TrackedState = "working" | "idle" | "done" | "blocked" | "none";
 
@@ -13,7 +13,7 @@ export interface TrackedAgent {
   key: string;              // unique across PCs: `${machineId}/${paneId}` (pane ids may be "w1:p1")
   machineId: string;
   paneId: string;
-  label: string;            // the same words the sidebar shows for this row
+  label: string;            // the task: the pane's own name, less the workspace, folders, shell and agent names (trackingTask); may be "" for an agent
   app: string | null;       // agent id, e.g. "codex"; null for a plain terminal
   state: TrackedState;      // from activity.status / agentGroup, same as the sidebar
   message: string | null;   // pane.agent_message (blocked reason today)
@@ -23,6 +23,7 @@ export interface TrackedAgent {
   parent: string | null;    // key of the parent (parent_pane_id on the same machine), if shown
   since: number | null;     // epoch ms the current state began (agentStateSince), else null
   finish: string | null;    // finish_id/finish_epoch marker; a new value = flash "done" once
+  model: string | null;     // the model its conversation last recorded; filled by the view (useAgentModels), null here
 }
 
 /**
@@ -44,20 +45,6 @@ export interface TrackingContext {
 /** A pane's own name (AgentSidebar's rowTitle): its given label, else its agent's or its own title, else the pane's display title. */
 function paneLabel(pane: HerdrPane, agent: AgentInfo | null): string {
   return pane.label?.trim() || agent?.title?.trim() || pane.title?.trim() || displayPaneTitle(pane);
-}
-
-/**
- * The sidebar row's title (AgentSidebar's agentRowTitle, two-line mode): the pane's own name,
- * unless it only names the agent the row's mark already shows, where the workspace's name says
- * more (a linked worktree's, shortened).
- */
-function sidebarLabel(entry: SidebarAgent): string {
-  const { pane, workspace } = entry;
-  const own = paneLabel(pane, entry.agent);
-  const mark = paneMark(entry);
-  const names = mark && hasAgentMark(mark) && entry.canonicalAgent ? [entry.canonicalAgent, agentName(entry.canonicalAgent)] : [];
-  if (pane.label?.trim() || !titleOnlyNamesAgent(own, names)) return own;
-  return workspace.worktree?.is_linked_worktree === true ? compactWorktreeName(workspace.label) : workspace.label;
 }
 
 export function trackedAgents(machines: readonly Machine[], ctx: TrackingContext): TrackedAgent[] {
@@ -86,8 +73,12 @@ export function trackedAgents(machines: readonly Machine[], ctx: TrackingContext
       // a pane the sidebar leaves out (a plain shell; one whose workspace the snapshot does not
       // name) still shows, as a plain terminal unless herdr names an agent for it
       const app = row?.canonicalAgent ?? (pane.agent?.trim() || null);
+      const workspaceName = workspace?.label ?? pane.workspace_id;
+      const names = app === null ? [] : [app, agentName(app), row?.agentLabel ?? ""];
+      const label = trackingTask(paneLabel(pane, row?.agent ?? agents.get(pane.pane_id) ?? null), workspaceName, names);
       if (app === null) {
-        out.push({ key, machineId: machine.id, paneId: pane.pane_id, label: paneLabel(pane, agents.get(pane.pane_id) ?? null), app, state: "none", message: null, workspace: workspace?.label ?? pane.workspace_id, cluster, machine: machineName, parent, since: null, finish });
+        // a plain terminal's first line is only its name: its pane id when its title was a shell's or a folder
+        out.push({ key, machineId: machine.id, paneId: pane.pane_id, label: label || pane.pane_id, app, state: "none", message: null, workspace: workspaceName, cluster, machine: machineName, parent, since: null, finish, model: null });
         continue;
       }
       const group = agentGroup(ctx.status(machine.id, pane));
@@ -95,16 +86,17 @@ export function trackedAgents(machines: readonly Machine[], ctx: TrackingContext
         key,
         machineId: machine.id,
         paneId: pane.pane_id,
-        label: row ? sidebarLabel(row) : paneLabel(pane, agents.get(pane.pane_id) ?? null),
+        label,
         app,
         state: group,
         message: pane.agent_message ?? null,
-        workspace: workspace?.label ?? pane.workspace_id,
+        workspace: workspaceName,
         cluster,
         machine: machineName,
         parent,
         since: stateSince(ctx.stamps, machine.id, pane.pane_id, pane.terminal_id, stampState(group)),
         finish,
+        model: null,
       });
     }
   }
