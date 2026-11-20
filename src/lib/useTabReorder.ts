@@ -111,7 +111,7 @@ export function useTabReorder({ owner, tabs, strip, moveTab, failed, stale, outs
   const boundaryAt = (held: Press): number | null => {
     const row = strip.current;
     if (!row || !overStrip(held) || current.current.ids.length < 2 || current.current.fixed) return null;
-    const items = [...row.querySelectorAll<HTMLElement>(".tab-strip-item")];
+    const items = [...row.querySelectorAll<HTMLElement>(".tab-strip-item[data-tab-index]")];
     const shown = tabDropBoundary(items.map((item) => item.getBoundingClientRect()), held.x);
     const places = items.map((item, index) => Number(item.dataset["tabIndex"] ?? index));
     return drawnTabBoundary(places, shown);

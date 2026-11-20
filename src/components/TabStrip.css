@@ -131,6 +131,12 @@
 
 /* the mark's own span is a box too, as in the sidebar and the composer: an inline span sits its SVG
    on the text baseline of a line box taller than the mark, which lifts the logo above the name */
+/* agent tracking's tab (StripLead): a lucide glyph at the agent marks' size */
+.tab-strip-lead .tab-strip-agent svg {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
 .tab-strip-agent .agent-mark {
   display: inline-flex;
 }

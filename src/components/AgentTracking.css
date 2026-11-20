@@ -1,4 +1,13 @@
 /* Agent tracking mode: one full-area canvas in the pane area's place, a quiet top bar over it. */
+/* the pane area's column while tracking: from 769px the workspace's tab strip with the Agents tab, then the scene */
+.agent-tracking-pane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .agent-tracking {
   position: relative;
   display: flex;

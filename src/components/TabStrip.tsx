@@ -15,6 +15,7 @@ import { autoTabLabel, customTabLabel, tabLabel } from "../lib/tabName.ts";
 import { shownTabLabels, subscribeTabLabels } from "../lib/tabLabels.ts";
 import { STRIP_AT_REST, stripPlaced, stripScrolled, stripSelected, type StripScroll } from "../lib/tabStripScroll.ts";
 import { TAB_MIN_WIDTH, tabsInRow } from "../lib/tabOverflow.ts";
+import { drawnTabBoundary, tabDropBoundary } from "../lib/tabOrder.ts";
 import { PANE_TABPANEL_ID, paneTabPanelLabel } from "../lib/paneRegion.ts";
 import { CRAMPED_QUERY, SOLO_PANE_QUERY, tabRowHidden } from "../lib/paneCanvas.ts";
 import { rosterPanes } from "../lib/dagPane.ts";
@@ -68,14 +69,31 @@ export interface TabStripProps {
   browserTabs?: boolean;
   closable?: boolean;
   phoneRow?: boolean;
+  /** a tab of Ovis's own before herdr's (agent tracking): never renamed, moved or closed; while it is
+   *  selected none of herdr's tabs is */
+  lead?: StripLead;
 }
+
+export interface StripLead {
+  label: string;
+  icon: ReactNode;
+  selected: boolean;
+  /** how many herdr tabs come before it; drawn no further than the strip's end */
+  at: number;
+  onSelect: () => void;
+  /** dragged, or Alt+Shift+Arrow: the new count of herdr tabs before it */
+  onMove: (at: number) => void;
+  onClose: () => void;
+}
+
+const LEAD_DRAG_SLOP = 4;
 
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_SLOP = 8;
 /** the click a lifted long press still sends is the press's, not a pick; a later one (a key, a mouse) is a pick again */
 const LONG_PRESS_CLICK_MS = 600;
 
-export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNewTab, onNewTerminal, onMoveToWorkspace, paneActions, panelId = PANE_TABPANEL_ID, splitDrag = false, renameRequest = null, onRenameHandled, closeRequest = null, onCloseHandled, end, inHeader = false, sheet = null, onSheetClose, browserTabs = false, closable = true, phoneRow = false }: TabStripProps) {
+export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNewTab, onNewTerminal, onMoveToWorkspace, paneActions, panelId = PANE_TABPANEL_ID, splitDrag = false, renameRequest = null, onRenameHandled, closeRequest = null, onCloseHandled, end, inHeader = false, sheet = null, onSheetClose, browserTabs = false, closable = true, phoneRow = false, lead }: TabStripProps) {
   const t = useT();
   const { settings } = useSettings();
   const machineId = useMachineId();
@@ -101,6 +119,9 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
   const [error, setError] = useState<string | null>(null);
   const [room, setRoom] = useState<{ width: number; add: number; open: number } | null>(null);
   const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
+  const [leadDrop, setLeadDrop] = useState<number | null>(null);
+  const leadPress = useRef<{ pointerId: number; x: number; y: number; started: boolean } | null>(null);
+  const leadDragged = useRef(false);
   const refocus = useRef<string | null>(null);
   const closing = useRef(new Set<string>());
   const closed = useRef<{ tabId: string; beside: string } | null>(null);
@@ -300,7 +321,9 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
     if (!browserTabs || !row) { setRoom(null); return; }
     const measure = (): void => {
       const add = row.querySelector<HTMLElement>(".tab-strip-add");
-      const addWidth = add ? add.getBoundingClientRect().width + (Number.parseFloat(getComputedStyle(add).marginLeft) || 0) : 0;
+      const leadItem = row.querySelector<HTMLElement>(".tab-strip-lead");
+      const addWidth = (add ? add.getBoundingClientRect().width + (Number.parseFloat(getComputedStyle(add).marginLeft) || 0) : 0)
+        + (leadItem ? leadItem.getBoundingClientRect().width : 0);
       const openTab = row.querySelector<HTMLElement>(".tab-strip-item.is-active");
       const openWidth = (openTab && Number.parseFloat(getComputedStyle(openTab).minWidth)) || TAB_MIN_WIDTH;
       setRoom((was) => was?.width === row.clientWidth && was.add === addWidth && was.open === openWidth ? was : { width: row.clientWidth, add: addWidth, open: openWidth });
@@ -309,7 +332,7 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
     const observer = new ResizeObserver(measure);
     observer.observe(row);
     return () => observer.disconnect();
-  }, [browserTabs, shown, tabsHidden]);
+  }, [browserTabs, shown, tabsHidden, lead !== undefined]);
   useEffect(() => {
     const row = strip.current;
     if (!row) return;
@@ -472,6 +495,17 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
     const buttons = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
     const index = buttons.indexOf(document.activeElement as HTMLElement);
     if (index < 0) return;
+    if (lead && buttons[index]?.dataset["lead"] !== undefined) {
+      const moveBy = event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowLeft" || event.key === "ArrowRight") ? (event.key === "ArrowLeft" ? -1 : 1) : 0;
+      if (moveBy !== 0) {
+        event.preventDefault(); event.stopPropagation();
+        const next = Math.min(tabs.length, Math.max(0, leadAt + moveBy));
+        if (!event.repeat && next !== leadAt) moveLead(next);
+        return;
+      }
+      if (event.key === "Delete") { event.preventDefault(); if (!event.repeat) lead.onClose(); return; }
+      if (event.key === "ContextMenu" || event.key === "F2" || (event.key === "F10" && event.shiftKey)) { event.preventDefault(); return; }
+    }
     if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault(); event.stopPropagation();
       const tabId = buttons[index]?.dataset["tabId"];
@@ -559,13 +593,69 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
   };
 
   const panePanel = paneTabPanelLabel(snapshot, selectedPane, t) !== null ? panelId : undefined;
+  // agent tracking's tab (StripLead): Ovis's own, placed among herdr's by a count this browser keeps
+  const leadAt = lead ? Math.min(Math.max(0, lead.at), tabs.length) : 0;
+  const moveLead = (at: number): void => {
+    lead?.onMove(at);
+    window.requestAnimationFrame(() => strip.current?.querySelector<HTMLElement>("[data-lead]")?.focus({ preventScroll: true }));
+  };
+  const leadBoundary = (x: number): number => {
+    const items = [...(strip.current?.querySelectorAll<HTMLElement>(".tab-strip-item[data-tab-index]") ?? [])];
+    if (items.length === 0) return 0;
+    const shown = tabDropBoundary(items.map((item) => item.getBoundingClientRect()), x);
+    return drawnTabBoundary(items.map((item) => Number(item.dataset["tabIndex"])), shown);
+  };
+  const leadElement = lead && (
+    <div key="tracking-lead" className={`tab-strip-item tab-strip-lead${lead.selected ? " is-active" : ""}${leadDrop !== null ? " is-dragging" : ""}`}>
+      <button type="button" role="tab" className="tab-strip-tab" data-lead="" aria-selected={lead.selected} tabIndex={lead.selected ? 0 : -1}
+        aria-keyshortcuts="Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Delete" title={lead.label}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || phoneRow) return;
+          leadPress.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, started: false };
+          leadDragged.current = false;
+        }}
+        onPointerMove={(event) => {
+          const held = leadPress.current;
+          if (!held || held.pointerId !== event.pointerId) return;
+          if (!held.started) {
+            if (Math.hypot(event.clientX - held.x, event.clientY - held.y) <= LEAD_DRAG_SLOP) return;
+            held.started = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+          setLeadDrop(leadBoundary(event.clientX));
+        }}
+        onPointerUp={(event) => {
+          const held = leadPress.current;
+          leadPress.current = null;
+          if (!held?.started) return;
+          leadDragged.current = true;
+          setLeadDrop(null);
+          const at = leadBoundary(event.clientX);
+          if (at !== leadAt) moveLead(at);
+        }}
+        onPointerCancel={() => { leadPress.current = null; setLeadDrop(null); }}
+        onDragStart={(event) => event.preventDefault()}
+        onClick={() => {
+          if (leadDragged.current) { leadDragged.current = false; return; }
+          if (!lead.selected) lead.onSelect();
+        }}
+        onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); lead.onClose(); } }}>
+        <span className="tab-strip-agent" aria-hidden="true">{lead.icon}</span>
+        <span className="tab-strip-label">{lead.label}</span>
+      </button>
+      {browserTabs && <button type="button" className="tab-strip-close" tabIndex={-1} aria-label={t("Close {tab}", { tab: lead.label })} title={t("Close {tab}", { tab: lead.label })} onClick={lead.onClose}>
+        <X aria-hidden="true" />
+      </button>}
+    </div>
+  );
+  const placeLead = (items: ReactNode[]): ReactNode[] => leadElement ? [...items.slice(0, leadAt), leadElement, ...items.slice(leadAt)] : items;
   const row = (
       <div ref={strip} className="tab-strip" role="tablist" aria-label={t("Tabs of {workspace}", { workspace: workspace.label })} aria-busy={reorder.moving} onKeyDown={onKeyDown} onScroll={onScroll}
         onFocus={(event) => { if (event.target.getAttribute("role") === "tab") focusedTab.current = event.target; }}
         onBlur={(event) => { if (event.relatedTarget !== null) focusedTab.current = null; }}>
-        {tabs.map((tab, index) => {
+        {placeLead(tabs.map((tab, index) => {
           if (inRow !== null && !inRow.has(index)) return null;
-          const active = tab.tab_id === selectedPane.tab_id;
+          const active = !lead?.selected && tab.tab_id === selectedPane.tab_id;
           const own = panesOf(tab);
           const status = statusOf(tab);
           const agent = chipAgentOf(tab);
@@ -577,7 +667,7 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
           const paneTitle = own.length === 1 && own[0] ? displayPaneTitle(own[0]) : t("{n} panes", { n: own.length });
           const tabTitle = paneTitle.includes(shownName) ? paneTitle : `${shownName} — ${paneTitle}`;
           return (
-            <div className={`tab-strip-item${active ? " is-active" : ""}${own.length > 1 ? " has-panes" : ""}${editing?.tabId === tab.tab_id ? " is-editing" : ""}${reorder.drag?.tabId === tab.tab_id ? " is-dragging" : ""}${reorder.drag?.boundary === index ? " is-drop-before" : ""}${reorder.drag?.boundary === index + 1 && !drawnNext(index) ? " is-drop-after" : ""}`} key={tab.tab_id} data-tab-index={index}>
+            <div className={`tab-strip-item${active ? " is-active" : ""}${own.length > 1 ? " has-panes" : ""}${editing?.tabId === tab.tab_id ? " is-editing" : ""}${reorder.drag?.tabId === tab.tab_id ? " is-dragging" : ""}${reorder.drag?.boundary === index || leadDrop === index ? " is-drop-before" : ""}${(reorder.drag?.boundary === index + 1 || leadDrop === index + 1) && !drawnNext(index) ? " is-drop-after" : ""}`} key={tab.tab_id} data-tab-index={index}>
               {editing?.tabId === tab.tab_id ? (
                 <input
                   className="input tab-strip-rename"
@@ -654,7 +744,8 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
                       return;
                     }
                     const pane = paneFor(tab);
-                    if (pane && pane.pane_id !== selectedPane.pane_id) onSelectPane(pane.pane_id);
+                    // under the lead (agent tracking) the selected pane's own tab is a pick too: it leaves tracking for it
+                    if (pane && (pane.pane_id !== selectedPane.pane_id || lead?.selected)) onSelectPane(pane.pane_id);
                   }}
                   onDoubleClick={!renameOffered || !closable ? undefined : () => beginRename(tab)}
                   onContextMenu={(event) => {
@@ -687,7 +778,7 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
               </button>}
             </div>
           );
-        })}
+        }))}
         {!phoneRow && <button type="button" className="tab-strip-add" disabled={!closable} aria-label={t("New terminal")} title={!closable ? `${t("New terminal")} · ${t("View only")}` : t("New terminal")} onClick={newTerminal}>
           <Plus aria-hidden="true" />
         </button>}

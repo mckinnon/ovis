@@ -34,7 +34,8 @@ import { usePreferencesSync } from "./lib/preferencesSync.ts";
 import { setTabLabelLearning, settleTabLabels, subscribeTabLabels } from "./lib/tabLabels.ts";
 import { customTabLabel, tabLabel } from "./lib/tabName.ts";
 import { agentName } from "./lib/runtimeMove.ts";
-import { TabStrip } from "./components/TabStrip.tsx";
+import { TabStrip, type StripLead } from "./components/TabStrip.tsx";
+import { storeTrackingTab, useTrackingTabPlace } from "./lib/trackingTab.ts";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { loadedOnSettingsEntry } from "./lib/settingsHistory.ts";
 import { useSettingsDialog } from "./lib/useSettingsDialog.ts";
@@ -340,6 +341,7 @@ export function App() {
   const inMode = inboxMode.on && !guideShown;
   // agent tracking draws every agent in the pane area's place; it attaches to no pane
   const trackingOn = trackingMode.on && !guideShown && !inMode;
+  const trackingTab = useTrackingTabPlace(trackingOn);
   inboxMode.drawerBlocked.current = inMode;
   const { leave: leaveModeShell } = inboxMode;
   const { enterInbox: enterInboxShell, returnTo } = useInboxShell({ inMode, shown: inbox.shown, show: inbox.show,
@@ -823,6 +825,18 @@ export function App() {
   const workspaceTabCount = selectedPane ? snapshot?.tabs.filter((tab) => tab.workspace_id === selectedPane.workspace_id).length ?? 0 : 0;
   const classicStripInHeader = (wideScreen ? !splitOn && !tabsInHeader : tabsInHeader) && !guideShown && snapshot !== null && selectedPane !== null && selectedWorkspace !== null;
   const stripInHeader = classicStripInHeader && !inMode;
+  // from 769px agent tracking is a tab of Ovis's own before the workspace's herdr tabs, shown under the
+  // header and that strip; narrower it stays a screen of its own with a close button
+  const trackingTabbed = trackingOn && wideScreen;
+  const trackingLead: StripLead | undefined = modeOffered && wideScreen && (!trackingTab.closed || trackingOn)
+    ? {
+      label: t("Agents"), icon: <Radar />, selected: trackingOn, at: trackingTab.at,
+      onSelect: () => { if (!trackingOn) trackingMode.go(); },
+      onMove: (at) => storeTrackingTab({ at, closed: false }),
+      onClose: () => { storeTrackingTab({ ...trackingTab, closed: true }); if (trackingOn) trackingMode.leave(); },
+    }
+    : undefined;
+  const selectPaneFromStrip = (paneId: string): void => { if (trackingOn) trackingMode.leaveToOpen(); selectPane(paneId); };
   // from 769px with a mouse the pane column ends in the Herdr app's status bar: where the pane is, its branch,
   // the connection.
   const statusBarShown = wideScreen && keyboardLikely && selectedPane !== null && crumb !== null && !guideShown && !inMode && !trackingOn;
@@ -913,7 +927,7 @@ export function App() {
       ...(filePanelWidth === null ? {} : { "--file-panel-user-w": `${filePanelWidth}px` }),
     } as CSSProperties}>
       {selectedPane !== null && !guideShown && !inbox.shown && <h1 className="visually-hidden">{selectedTitle}</h1>}
-      {listScreen || inboxWide || trackingOn ? null : <header className={`app-header is-zoned${chatShown ? " is-chat" : ""}${stripInHeader && !phoneTabRow ? " has-tab-row" : ""}${phoneTabRow && stripInHeader ? " has-phone-tabs" : ""}`}>
+      {listScreen || inboxWide || (trackingOn && !trackingTabbed) ? null : <header className={`app-header is-zoned${chatShown ? " is-chat" : ""}${stripInHeader && !phoneTabRow ? " has-tab-row" : ""}${phoneTabRow && stripInHeader ? " has-phone-tabs" : ""}`}>
         <div className="header-side">
           {wideScreen && !sidebarCollapsed && !inMode && <SidebarBrand dark={resolvedTheme === "dark"} onOpenInbox={markEnters ? () => { actions.counted?.("inbox", "button"); enterInbox(); } : null} />}
           {inboxBack ? <button type="button" id="inbox-back" className="icon-button inbox-back" aria-label={t("Back")} title={t("Back")} onClick={inbox.back}><ChevronLeft /></button> : <button
@@ -958,14 +972,15 @@ export function App() {
           <div className={`header-tabs${phoneTabRow ? " is-phone" : ""}`}>
             <RenderBoundary resetKey={`${selectedMachineId}:${selectedPane.pane_id}`} fallback={(retry) => <RegionCrash message={t("This pane can't be shown.")} retry={retry} />}>
             <PanePressContext.Provider value={pressPane}>
-              <TabStrip snapshot={snapshot} workspace={selectedWorkspace} selectedPane={selectedPane} onSelectPane={selectPane} splitDrag={!phoneTabRow} browserTabs={!phoneTabRow} phoneRow={phoneTabRow}
+              <TabStrip snapshot={snapshot} workspace={selectedWorkspace} selectedPane={selectedPane} onSelectPane={selectPaneFromStrip} splitDrag={!phoneTabRow} browserTabs={!phoneTabRow} phoneRow={phoneTabRow}
+                lead={phoneTabRow ? undefined : trackingLead}
                 sheet={phoneTabRow ? tabSheet : null} onSheetClose={closeTabSheet} closable={auth?.role !== "watch"}
                 renameRequest={renameRequest?.machineId === selectedMachineId && renameRequest.paneId === selectedPane.pane_id ? renameRequest : null}
                 onRenameHandled={clearRenameRequest}
                 closeRequest={closeTabRequest?.machineId === selectedMachineId && closeTabRequest.paneId === selectedPane.pane_id ? closeTabRequest : null}
                 onCloseHandled={clearCloseTabRequest}
-                onNewTab={() => { actions.counted?.("new_tab", "button"); actions.openNewTab(); }}
-                onNewTerminal={() => { actions.counted?.("new_tab", "button"); return actions.openTerminalTab(); }}
+                onNewTab={() => { actions.counted?.("new_tab", "button"); if (trackingOn) trackingMode.leaveToOpen(); actions.openNewTab(); }}
+                onNewTerminal={() => { actions.counted?.("new_tab", "button"); if (trackingOn) trackingMode.leaveToOpen(); return actions.openTerminalTab(); }}
                 onMoveToWorkspace={(tabId, workspaceId) => actions.moveTabToWorkspace({ machineId: selectedMachineId, tabId, workspaceId })}
                 paneActions={(paneId) => {
                   const target = snapshot.panes.find((item) => item.pane_id === paneId);
@@ -982,7 +997,7 @@ export function App() {
               <ChevronDown aria-hidden="true" />
             </button>}
           </div>
-        ) : note !== null ? null : inbox.shown ? <Brand /> : inMode && selectedPane ? (
+        ) : note !== null ? null : inbox.shown || trackingOn ? <Brand /> : inMode && selectedPane ? (
           <ThreadTitle machines={machines} activity={activity} machineId={selectedMachineId} pane={selectedPane} connection={headerConnection} watching={auth?.role === "watch"} severalPcs={sidebarMachines.length > 1} />
         ) : selectedPane && crumb ? (
           <div className={`context${headerConnection === null ? "" : " has-connection"}${tabsInHeader && selectedWorkspace && !guideShown ? " has-tabs" : ""}`} title={crumb.tooltip}>
@@ -1021,11 +1036,11 @@ export function App() {
         ) : (
           <><Brand /><span className="machine-context-name">{selectedMachine?.name ?? selectedMachineId}</span></>
         )}
-        {selectedPane && (isSheetWidth || inMode) && !inbox.shown && (
+        {selectedPane && (isSheetWidth || inMode) && !inbox.shown && !trackingOn && (
           <LensToggle view={view} peek={terminalPeek !== null} terminalAttach={terminalAttach} thread={inMode}
             title={(label) => shortcutTitle(label, "toggle-view")} onToggle={() => actions.toggleView("header")} />
         )}
-        {selectedPane && !isSheetWidth && !inMode && (
+        {selectedPane && !isSheetWidth && !inMode && !trackingOn && (
           <div className="view-switch" data-view={view} role="group" aria-label={`${t("Chat")} / ${t("Terminal")}`}>
             <button type="button" className="lens-option is-chat" aria-pressed={view === "chat"} aria-label={t("Chat")} title={shortcutTitle(t("Chat transcript"), "toggle-view")}
               onClick={() => { setView("chat", "header"); setDrawerOpen(false); }}>
@@ -1042,7 +1057,7 @@ export function App() {
             <span className="lens-thumb" aria-hidden="true" />
           </div>
         )}
-        {selectedPane && wideScreen && !inMode && (
+        {selectedPane && wideScreen && !inMode && !trackingOn && (
           <button type="button" className="header-text-button header-files-button is-icon" aria-label={t("Browse files")} title={t("Files")} aria-pressed={filesDocked ? filesBeside : undefined} onClick={toggleFiles}>
             <FolderOpen aria-hidden="true" />
           </button>
@@ -1212,6 +1227,7 @@ export function App() {
                 {slotSnapshot && pane && workspace && !(active && classicStripInHeader) && !threadDrawn && (
                   <TabStrip snapshot={slotSnapshot} workspace={workspace} selectedPane={pane} panelId={slotPanelId} splitDrag={wideScreen} onSelectPane={onSelect}
                     inHeader={tabsInHeader} sheet={active ? tabSheet : null} onSheetClose={closeTabSheet} end={slotEnd} closable={auth?.role !== "watch"}
+                    lead={slot === shownSlots[0] ? trackingLead : undefined}
                     renameRequest={active && renameRequest?.machineId === machineId && renameRequest.paneId === pane.pane_id ? renameRequest : null}
                     onRenameHandled={clearRenameRequest}
                     closeRequest={active && closeTabRequest?.machineId === machineId && closeTabRequest.paneId === pane.pane_id ? closeTabRequest : null}
@@ -1291,8 +1307,15 @@ export function App() {
           })}
           {listScreen && modeList(false)}
           {inboxWide && inbox.shown && <InboxUnchosen />}
-          {trackingOn && <AgentTracking machines={sidebarMachines} activity={activity} onClose={trackingMode.leave}
-            onOpen={(machineId, paneId) => { trackingMode.leaveToOpen(); activateSlotOf({ machineId, paneId }); selectTarget(machineId, paneId, "chat"); }} />}
+          {trackingOn && <div className="agent-tracking-pane">
+            {trackingTabbed && !stripInHeader && snapshot && selectedPane && selectedWorkspace && (
+              <TabStrip snapshot={snapshot} workspace={selectedWorkspace} selectedPane={selectedPane} onSelectPane={selectPaneFromStrip} lead={trackingLead}
+                closable={auth?.role !== "watch"} onNewTab={() => { trackingMode.leaveToOpen(); actions.openNewTab(); }} onNewTerminal={() => { trackingMode.leaveToOpen(); return actions.openTerminalTab(); }}
+                onMoveToWorkspace={(tabId, workspaceId) => actions.moveTabToWorkspace({ machineId: selectedMachineId, tabId, workspaceId })} />
+            )}
+            <AgentTracking machines={sidebarMachines} activity={activity} onClose={trackingTabbed ? undefined : trackingMode.leave}
+              onOpen={(machineId, paneId) => { trackingMode.leaveToOpen(); activateSlotOf({ machineId, paneId }); selectTarget(machineId, paneId, "chat"); }} />
+          </div>}
           {dividers.length > 0 && !inMode && !trackingOn && <SplitDividers dividers={dividers} areaRef={paneAreaRef} onResize={resizeDivider} />}
           <SplitDropPreview visible={!inMode && !trackingOn && splitDragOn && (paneDragging || tabDrag !== null)} grid={gridPreview} />
         </div>}

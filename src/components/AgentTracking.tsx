@@ -55,7 +55,8 @@ export function AgentTracking({ machines, activity, onOpen, onClose }: {
   machines: readonly Machine[];
   activity: SidebarActivity;
   onOpen(machineId: string, paneId: string): void;
-  onClose(): void;
+  /** a close button, where tracking is a screen of its own; none where it is a tab */
+  onClose?: () => void;
 }) {
   const t = useT();
   const stamps = useAgentStateStamps();
@@ -243,9 +244,9 @@ export function AgentTracking({ machines, activity, onOpen, onClose }: {
         <p className="agent-tracking-counts" role="status">
           {t("{total} running · {working} working · {blocked} need you", counts)}
         </p>
-        <button type="button" className="btn btn-ghost agent-tracking-close" onClick={onClose} aria-label={t("Back to Ovis")} title={t("Back to Ovis")}>
+        {onClose && <button type="button" className="btn btn-ghost agent-tracking-close" onClick={onClose} aria-label={t("Back to Ovis")} title={t("Back to Ovis")}>
           <X aria-hidden="true" />
-        </button>
+        </button>}
       </header>
       <div ref={stageRef} className={`agent-tracking-stage${hot ? " is-hot" : ""}`} aria-hidden="true">
         <canvas ref={sceneRef} className="agent-tracking-canvas" />

@@ -2782,10 +2782,22 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   lib/agentTrackingScene.ts, lib/agentTrackingModel.ts, lib/appMode.ts). Its address is
   `?app=tracking`, the same parameter as the inbox's, so the two are never on together and a
   reload, a link, Back and Forward agree on it. It attaches, sizes and focuses no pane.
-- Ways in: the command palette (**Open agent tracking**), the sidebar footer beside the inbox's
-  row on a desktop, and More. Ways out: the close button in its top bar (**Back to Ovis**), the
-  palette, Back, and opening an agent: a click on a box (or on the row of the visually hidden list
-  under it) selects that pane in chat and leaves the mode.
+- From 769px it is a tab: **Agents**, Ovis's own tab before the workspace's herdr tabs, with a
+  radar glyph where a herdr tab has its agent's mark (TabStrip's `lead`; in a split, the first
+  half's strip). It moves and closes as herdr's tabs do (a drag with the insertion line,
+  Alt+Shift+Arrow, the X in the header's row, the middle button, Delete) but is not renamed and
+  has no tab menu. Being Ovis's, not herdr's, its place (how many herdr tabs come before it, one
+  count for every workspace) and its closing are this browser's (lib/trackingTab.ts), and a herdr
+  tab's drag counts only herdr's tabs. Opening tracking any other way brings a closed tab back.
+  While it is open it is the selected tab, the header and that strip stay, the header's
+  pane controls (Chat / Terminal, Files) step aside, and the scene fills the pane area under the
+  strip. Picking any herdr tab, even the one that was open, or its `+`, leaves tracking for it,
+  with one Back to return. Narrower, and on the phone's tab row, it stays a screen of its own.
+- Ways in: the **Agents** tab, the command palette (**Open agent tracking**), the sidebar footer
+  beside the inbox's row on a desktop, and More. Ways out: a herdr tab, the close button in its
+  top bar where it is a screen of its own (**Back to Ovis**), the palette, Back, and opening an
+  agent: a click on a box (or on the row of the visually hidden list under it) selects that pane
+  in chat and leaves the mode.
 - What a box says comes from the sidebar's own words, so the two never disagree: the row title,
   the state group (**Working**, **Idle**, **Done**, **Needs you**; a terminal with no agent says
   **Terminal**), the time in that state from the same device stamps (lib/agentStateSince.ts),
