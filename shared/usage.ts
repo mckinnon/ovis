@@ -1,5 +1,5 @@
 /** The subscriptions whose plan limits GET /api/usage can read from a CLI's own sign-in. */
-export type UsageProviderId = "claude" | "codex" | "cursor" | "copilot" | "grok" | "antigravity" | "opencode" | "kimi";
+export type UsageProviderId = "claude" | "codex" | "cursor" | "copilot" | "grok" | "antigravity" | "opencode" | "kimi" | "gemini";
 
 /** One limit of a plan: how much of it is used and when it starts over. */
 export interface UsageWindow {
